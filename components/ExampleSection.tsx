@@ -79,7 +79,7 @@ export default function ExampleSection() {
         </div>
 
         {/* Cards — w-fit so the border hugs the cards with zero extra space */}
-        <div className="flex flex-wrap w-full justify-start gap-8">
+        <div className="flex flex-wrap w-full justify-center md:justify-start gap-8">
           {EXAMPLE_SLIDES.map((slide, i) => (
             <div
               key={slide.slide_number}
