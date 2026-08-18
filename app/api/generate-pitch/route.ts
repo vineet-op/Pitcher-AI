@@ -1,48 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenAI } from "@google/genai";
-import { buildMasterPrompt, CompanyInfo } from "@/lib/prompts";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+import { generateWithFallback } from "@/lib/gemini";
+import { buildMasterPrompt } from "@/lib/prompts";
 
 export interface Slide {
   slide_number: number;
   slide_title: string;
   headline: string;
-  body: string;
+  subtext: string;
   bullet_points: string[];
-  tone_note: string;
+  slide_type: "hook" | "setup" | "punchline" | "proof" | "skills" | "ask";
+  image_tag: string;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const {
-      resumeJson,
-      companyInfo,
-    }: { resumeJson: Record<string, unknown>; companyInfo: CompanyInfo } = body;
+    const { resumeJson, tone }: { resumeJson: Record<string, unknown>; tone: string } = body;
 
-    if (!resumeJson || !companyInfo) {
-      return NextResponse.json(
-        { error: "Missing resumeJson or companyInfo" },
-        { status: 400 },
-      );
+    if (!resumeJson) {
+      return NextResponse.json({ error: "Missing resume data" }, { status: 400 });
     }
 
-    if (!companyInfo.name || !companyInfo.role || !companyInfo.jobDescription) {
-      return NextResponse.json(
-        { error: "Company name, role, and job description are required" },
-        { status: 400 },
-      );
-    }
-
-    const prompt = buildMasterPrompt(resumeJson, companyInfo);
-
-    const response = await ai.interactions.create({
-      model: "gemini-3.6-flash",
-      input: prompt,
-    });
-
-    const responseText = response.output_text ?? "";
+    const prompt = buildMasterPrompt(resumeJson, tone ?? "funny");
+    const responseText = await generateWithFallback(prompt);
 
     const cleanedJson = responseText
       .replace(/```json\n?/g, "")

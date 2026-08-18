@@ -1,3 +1,5 @@
+import { MEME_CATALOG } from "./memes";
+
 export function buildResumeParsePrompt(rawText: string): string {
   return `Extract the following resume text into structured JSON. Return ONLY valid JSON with no markdown, no code fences, no extra commentary.
 
@@ -44,84 +46,137 @@ ${rawText}`;
 
 export function buildMasterPrompt(
   resume: Record<string, unknown>,
-  company: CompanyInfo,
+  tone: string,
 ): string {
-  return `You are an expert personal branding strategist and pitch writer. Your job is to transform a candidate's resume and a target company's information into a compelling, creative pitch deck — NOT a boring resume summary.
+  const toneInstructions: Record<string, string> = {
+    funny: `TONE — Bold & Funny:
+Think stand-up comedy meets LinkedIn flex. Slides work in setup → punchline pairs — the reader swipes to get the payoff. That's what keeps them scrolling.
+- Wit, self-awareness, and light sarcasm
+- Slip technical proof in through humor: "cut 4 hours to 23 minutes. Not magic. Just Node.js."
+- One perfect line beats a paragraph every single time`,
+    sharp: `TONE — Confident & Sharp:
+Founder pitching on a 60-second timer. Every word earns its place.
+- No fluff, no filler
+- State achievements like facts at a press briefing
+- Technical proof front and center. Dry wit allowed.`,
+    professional: `TONE — Professional & Warm:
+Senior engineer being referred by a mutual connection.
+- Warm, direct, human — not corporate
+- Technical depth with approachable language
+- Story-driven proof over stat-dumping`,
+  };
 
-The pitch should feel like a founder pitching their startup, except the product is the candidate themselves. It should be confident, specific, and memorable. Avoid clichés like "passionate", "team player", "hard worker", "results-driven". Every claim must be backed by a specific project, number, or experience from the resume.
+  const selectedTone = toneInstructions[tone] ?? toneInstructions["funny"];
+
+  return `You are a world-class personal pitch writer — part stand-up comedian, part startup pitch coach, part senior engineer who knows how to tell a story.
+
+Your job: turn a developer's resume into a carousel pitch deck that gets shared on LinkedIn. Not because it's fluffy — because it's specific, human, and impossible to ignore.
+
+Reference benchmark: The Swiggy copywriter pitch that went viral in 2024. It worked because:
+1. Each slide had 1-3 lines MAX — no paragraphs ever
+2. Slides worked in setup → punchline pairs across swipes
+3. Technical proof was delivered as a brag, not a resume entry
+4. Zero corporate language
 
 ---
 
-INPUT DATA
+${selectedTone}
+
+---
 
 CANDIDATE RESUME:
 ${JSON.stringify(resume, null, 2)}
-
-TARGET COMPANY:
-- Company Name: ${company.name}
-- Job Role: ${company.role}
-- Job Description: ${company.jobDescription}
-- About the Company: ${company.about || "Not provided"}
 
 ---
 
 OUTPUT FORMAT
 
-Generate content for exactly 7 pitch slides. Return ONLY a valid JSON array with no markdown, no code fences, no extra text.
+Generate exactly 12 pitch slides. Return ONLY a valid JSON array. No markdown, no code fences, no explanation.
 
 Each slide object must have:
-- slide_number (number)
-- slide_title (string, max 6 words, punchy)
-- headline (string, one bold statement, max 15 words)
-- body (string, 2-4 sentences, specific and concrete)
-- bullet_points (array of strings, 3-5 items, or empty array)
-- tone_note (string, one sentence describing the vibe)
+- slide_number (number, 1-12)
+- slide_title (string, 2-4 words MAX)
+- headline (string, the MAIN text — max 12 words, this is what the viewer reads)
+- subtext (string, ONE short follow-up line or empty string — max 10 words)
+- bullet_points (array of strings — max 3 items, each under 6 words, or empty array)
+- slide_type (string: "hook" | "setup" | "punchline" | "proof" | "skills" | "ask")
+- image_tag (string: one meme tag from the catalog below, or empty string "")
+
+CRITICAL SLIDE RULES:
+- headline + subtext = the ENTIRE slide content. Nothing else.
+- No paragraphs. Ever. More than 2 lines per slide = failure.
+- bullet_points ONLY on the skills slide (slide 9). Empty array everywhere else.
+- Slides work in PAIRS: N is setup, N+1 is payoff. Reader swipes to get the punchline.
+- Technical proof must include ONE real number from the resume (%, time saved, count, etc.)
+
+MEME IMAGES (image_tag):
+Available meme catalog — use the EXACT tag string:
+${MEME_CATALOG}
+
+Meme rules:
+- The meme must LAND the joke of that specific slide — like the Swiggy pitch, images are punchline amplifiers, not decoration
+- Never use the same meme twice
+- If tone is "funny": add memes to 4-6 slides (especially punchline, proof, and ask slides)
+- If tone is "sharp": max 2 memes, only where they genuinely amplify
+- If tone is "professional": max 1 meme, or none
+- All other slides: image_tag = ""
 
 ---
 
-THE 7 SLIDES
+THE 12 SLIDES
 
-Slide 1 — The Hook:
-Open with a bold specific claim about what the candidate brings to THIS company. Reference something real and specific about the company — a product, a challenge they face, their market position, or something from the job description. Make the reader feel this pitch was made for them and only them.
+Slide 1 — Hook (slide_type: "hook"):
+A clever one-liner or wordplay about what this person does or who they are. Should make the reader smirk and immediately swipe. This is the opening act — make it count.
 
-Slide 2 — Who Am I:
-A human confident introduction. Not a job title list. Who is this person, what do they care about, what kind of work excites them. Keep it personal and real. No bullet points — flowing copy only.
+Slide 2 — Setup (slide_type: "setup"):
+A bold claim about who the candidate is. One sentence. Sets up slide 3.
+Example: "I build things that actually ship."
 
-Slide 3 — The Problem I'll Solve For You:
-Based on the job description and company context, identify 1-2 specific problems or challenges this company likely faces in this role. Name the actual challenge. Frame the candidate as someone who has already solved a version of that problem. Do NOT list skills here.
+Slide 3 — Punchline (slide_type: "punchline"):
+The payoff to slide 2. One line that reframes or adds a twist. Can be humorous or punchy.
 
-Slide 4 — Proof of Work:
-Pick the 2-3 most relevant projects or experiences from the resume that directly map to the job requirements. For each: what was the problem, what did the candidate do, what was the measurable result. Use numbers wherever available. Present as mini case studies.
+Slide 4 — Proof Setup (slide_type: "proof"):
+One technical achievement from the resume. Result first, then hint at how.
+headline: "[Impressive number or outcome]."
+subtext: "[What tech or approach made it happen]."
 
-Slide 5 — My Edge:
-3-5 core skills most relevant to THIS role. For each skill, one sentence of evidence from the resume. Not a list — a skills argument. Each bullet should be "[Skill]: [evidence from resume]".
+Slide 5 — Proof Payoff (slide_type: "proof"):
+A second distinct technical achievement. Result first, tech second. Different project from slide 4.
 
-Slide 6 — Why This Company:
-Written from the candidate's genuine perspective. Why does THIS company excite them? Reference something specific — their product, mission, a challenge they're solving, their scale. Must feel researched, not templated. Should NOT sound like a generic cover letter opener.
+Slide 6 — Setup (slide_type: "setup"):
+Self-aware humor OR a relatable dev problem statement.
+Example: "Every dev says they write clean code." or "My GitHub has 0 unresolved PRs."
 
-Slide 7 — The Ask:
-A confident clear closing. What does the candidate want (interview, conversation, coffee chat)? One bold memorable closing line. Include a call to action with contact info from the resume. If the candidate is underqualified in some areas, acknowledge it honestly and briefly — this builds trust.
+Slide 7 — Punchline (slide_type: "punchline"):
+The payoff to slide 6. Should make the reader think "okay, fair."
+
+Slide 8 — Skills Setup (slide_type: "setup"):
+Frame the candidate's skills as a joke, observation, or bold claim — NOT as a list yet.
+Example: "React by day. Node by night. Sleep is a deploy-time concern."
+
+Slide 9 — Skills Proof (slide_type: "skills"):
+The actual skills list. Top 4-5 most impressive, grounded in real usage.
+headline: "In production. Not just on my resume." (or similar setup line)
+bullet_points: ["[Skill] — [4-word proof from resume]", ...]
+
+Slide 10 — Setup (slide_type: "setup"):
+A bold or funny observation about the industry, the hiring process, or what makes this candidate different.
+Example: "200 resumes. Most say the same thing." or "I don't just use AI tools. I build them."
+
+Slide 11 — Punchline (slide_type: "punchline"):
+The payoff to slide 10. Confident, memorable, slightly audacious.
+
+Slide 12 — The Ask (slide_type: "ask"):
+headline: One bold closing line — a challenge, question, or confident statement.
+subtext: "[Name] · [email] · [linkedin or github if available]"
 
 ---
 
-TONE GUIDELINES:
-- Confident but not arrogant
-- Specific, never vague
-- Human and conversational, not corporate
-- Creative framing — think startup pitch, not HR document
-
-CONSTRAINTS:
-- Never use: passionate, driven, motivated, team player, hard worker, results-oriented, leverage, synergy, dynamic
-- Every claim must trace back to something in the resume — no fabrication
-- If resume data is missing for a section, note [NEEDS_INFO: what's missing] rather than making something up
-- Keep each slide digestible — it will be displayed as a carousel card
+HARD CONSTRAINTS:
+- Never use: passionate, driven, motivated, team player, hard worker, results-oriented, leverage, synergy, dynamic, excited to, thrilled to
+- Every technical claim must trace to something real in the resume — never fabricate numbers
+- If a specific number isn't in the resume, don't invent one — use a qualitative truth instead
+- bullet_points ONLY on slide 9. Empty array on all other slides.
 
 Return ONLY the JSON array. No other text.`;
-}
-
-export interface CompanyInfo {
-  name: string;
-  role: string;
-  jobDescription: string;
-  about: string;
 }

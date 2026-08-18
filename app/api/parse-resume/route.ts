@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractText, getDocumentProxy } from "unpdf";
-import { GoogleGenAI } from "@google/genai";
+import { generateWithFallback } from "@/lib/gemini";
 import { buildResumeParsePrompt } from "@/lib/prompts";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,22 +27,13 @@ export async function POST(req: NextRequest) {
 
     if (!rawText || rawText.trim().length < 50) {
       return NextResponse.json(
-        {
-          error:
-            "Could not extract text from PDF. Make sure it is not a scanned image.",
-        },
+        { error: "Could not extract text from PDF. Make sure it is not a scanned image." },
         { status: 400 },
       );
     }
 
     const prompt = buildResumeParsePrompt(rawText);
-
-    const response = await ai.interactions.create({
-      model: "gemini-3.6-flash",
-      input: prompt,
-    });
-
-    const responseText = response.output_text ?? "";
+    const responseText = await generateWithFallback(prompt);
 
     const cleanedJson = responseText
       .replace(/```json\n?/g, "")
@@ -52,16 +41,13 @@ export async function POST(req: NextRequest) {
       .trim();
 
     const resumeJson = JSON.parse(cleanedJson);
-
     return NextResponse.json(resumeJson);
   } catch (error) {
     console.error("Resume parse error:", error);
 
     if (error instanceof SyntaxError) {
       return NextResponse.json(
-        {
-          error: "Failed to parse resume structure. Try a cleaner PDF format.",
-        },
+        { error: "Failed to parse resume structure. Try a cleaner PDF format." },
         { status: 500 },
       );
     }
