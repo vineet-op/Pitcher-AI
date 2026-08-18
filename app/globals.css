@@ -1,26 +1,56 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --cream: #F2EDE4;
+  --almost-black: #0A0A0A;
+  --electric-blue: #1847FF;
+  --neon-lime: #CCFF00;
+  --hot-pink: #FF1F5A;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: var(--cream);
+  color: var(--almost-black);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ── Brutalist grid background ── */
+.grid-bg {
+  background-color: #F2EDE4;
+  background-image:
+    linear-gradient(rgba(10, 10, 10, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(10, 10, 10, 0.055) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* ── Hard offset shadows (no blur) ── */
+.brut-shadow    { box-shadow: 4px 4px 0px #0A0A0A; }
+.brut-shadow-lg { box-shadow: 6px 6px 0px #0A0A0A; }
+.brut-shadow-sm { box-shadow: 2px 2px 0px #0A0A0A; }
+.brut-shadow-blue { box-shadow: 4px 4px 0px #1847FF; }
+.brut-shadow-lime { box-shadow: 4px 4px 0px #CCFF00; }
+.brut-shadow-pink { box-shadow: 4px 4px 0px #FF1F5A; }
+
+/* Hover: button sinks into its shadow */
+.brut-btn:hover  { transform: translate(2px, 2px); box-shadow: 2px 2px 0px #0A0A0A; }
+.brut-btn:active { transform: translate(4px, 4px); box-shadow: 0px 0px 0px #0A0A0A; }
+
+/* ── Scrollbar hiding ── */
+.scrollbar-none                 { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* ── Sticker label ── */
+.sticker {
+  display: inline-block;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border: 2px solid #0A0A0A;
 }
