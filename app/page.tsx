@@ -42,6 +42,13 @@ const LOADING_MESSAGES = [
   'COOKING YOUR 12 SLIDES...',
 ];
 
+const RESEARCH_LOADING_MESSAGES = [
+  'READING YOUR RESUME...',
+  'RESEARCHING THE COMPANY...',
+  'MATCHING YOUR PROOF TO THE ROLE...',
+  'COOKING YOUR 12 SLIDES...',
+];
+
 const PREVIEW_SCALE = 0.38;
 const THUMB_SCALE   = 0.09;
 
@@ -58,6 +65,15 @@ export default function Home() {
   const [selectedTone, setSelectedTone] = useState<Tone>('funny');
   const [activeSlide, setActiveSlide]   = useState(0);
   const [contact, setContact]       = useState<ContactLinks>(EMPTY_CONTACT);
+  const [companyName, setCompanyName] = useState('');
+  const [roleTitle, setRoleTitle]   = useState('');
+  const [jobUrl, setJobUrl]         = useState('');
+  const [jobText, setJobText]       = useState('');
+  const [target, setTarget]         = useState<{
+    company: string;
+    role: string;
+    warnings: string[];
+  } | null>(null);
   const [exporting, setExporting]   = useState(false);
   const [exportDone, setExportDone] = useState(0);
   const fileInputRef  = useRef<HTMLInputElement>(null);
@@ -67,7 +83,10 @@ export default function Home() {
   /* Cycle loading messages while generating */
   useEffect(() => {
     if (loadingStage !== 'generating') { setLoadingMsgIdx(0); return; }
-    const id = setInterval(() => setLoadingMsgIdx(i => (i + 1) % LOADING_MESSAGES.length), 2400);
+    const msgs = (companyName.trim() || jobUrl.trim() || jobText.trim())
+      ? RESEARCH_LOADING_MESSAGES
+      : LOADING_MESSAGES;
+    const id = setInterval(() => setLoadingMsgIdx(i => (i + 1) % msgs.length), 2400);
     return () => clearInterval(id);
   }, [loadingStage]);
 
@@ -145,11 +164,19 @@ export default function Home() {
       const res  = await fetch('/api/generate-pitch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resumeJson, tone: selectedTone }),
+        body: JSON.stringify({
+          resumeJson,
+          tone: selectedTone,
+          companyName,
+          roleTitle,
+          jobUrl,
+          jobText,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate pitch');
       setSlides(data.slides);
+      setTarget(data.target ?? null);
       originalSlidesRef.current = structuredClone(data.slides);
       setActiveSlide(0);
       setView('result');
@@ -170,6 +197,11 @@ export default function Home() {
     setFileName(null);
     setSelectedTone('funny');
     setContact(EMPTY_CONTACT);
+    setCompanyName('');
+    setRoleTitle('');
+    setJobUrl('');
+    setJobText('');
+    setTarget(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -339,6 +371,74 @@ export default function Home() {
             </div>
           )}
 
+          {/* ── Target a role (optional RAG) ── */}
+          {resumeJson && (
+            <div className="mb-8 border-4 border-[#0A0A0A] brut-shadow">
+              <div className="border-b-4 border-[#0A0A0A] px-5 py-3 flex items-center justify-between bg-[#1847FF]">
+                <span className="text-xs font-black uppercase tracking-widest text-white">
+                  Target a role · optional
+                </span>
+                <span className="text-xs font-bold text-white/50">Tavily researches the org</span>
+              </div>
+              <div className="p-5 bg-[#F2EDE4] flex flex-col gap-4">
+                <p className="text-xs font-medium text-[#0A0A0A]/60">
+                  Leave empty for a personal-brand carousel. Add a company to tailor the pitch.
+                  Use a Greenhouse / Lever / careers URL — not LinkedIn. If you only have LinkedIn, paste the JD below.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-black uppercase tracking-widest text-[#0A0A0A]/60 mb-1.5">
+                      Company
+                    </label>
+                    <input
+                      type="text"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="Stripe"
+                      className="w-full border-2 border-[#0A0A0A] px-3 py-2 text-sm font-medium bg-white text-[#0A0A0A] placeholder-[#0A0A0A]/30 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black uppercase tracking-widest text-[#0A0A0A]/60 mb-1.5">
+                      Role
+                    </label>
+                    <input
+                      type="text"
+                      value={roleTitle}
+                      onChange={(e) => setRoleTitle(e.target.value)}
+                      placeholder="Frontend engineer"
+                      className="w-full border-2 border-[#0A0A0A] px-3 py-2 text-sm font-medium bg-white text-[#0A0A0A] placeholder-[#0A0A0A]/30 focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-widest text-[#0A0A0A]/60 mb-1.5">
+                    Job URL
+                  </label>
+                  <input
+                    type="url"
+                    value={jobUrl}
+                    onChange={(e) => setJobUrl(e.target.value)}
+                    placeholder="https://boards.greenhouse.io/company/jobs/..."
+                    className="w-full border-2 border-[#0A0A0A] px-3 py-2 text-sm font-medium bg-white text-[#0A0A0A] placeholder-[#0A0A0A]/30 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-widest text-[#0A0A0A]/60 mb-1.5">
+                    Paste JD
+                  </label>
+                  <textarea
+                    value={jobText}
+                    onChange={(e) => setJobText(e.target.value)}
+                    rows={5}
+                    placeholder="Paste the job description if the URL is LinkedIn or extract fails"
+                    className="w-full border-2 border-[#0A0A0A] px-3 py-2 text-sm font-medium bg-white text-[#0A0A0A] placeholder-[#0A0A0A]/30 focus:outline-none resize-y"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Tone selector ── */}
           <div className="mb-8">
             <div className="text-xs font-black uppercase tracking-widest text-[#0A0A0A]/60 mb-3">
@@ -371,10 +471,14 @@ export default function Home() {
             <div className="border-4 border-[#0A0A0A] bg-[#1847FF] p-8 text-center brut-shadow-lg">
               <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-5" />
               <p className="text-white font-black text-sm uppercase tracking-widest">
-                {LOADING_MESSAGES[loadingMsgIdx]}
+                {((companyName.trim() || jobUrl.trim() || jobText.trim())
+                  ? RESEARCH_LOADING_MESSAGES
+                  : LOADING_MESSAGES)[loadingMsgIdx]}
               </p>
               <p className="text-white/40 text-xs font-bold mt-2 uppercase tracking-wider">
-                This takes 15–30 seconds
+                {(companyName.trim() || jobUrl.trim() || jobText.trim())
+                  ? 'Research + generation can take 30–50 seconds'
+                  : 'This takes 15–30 seconds'}
               </p>
             </div>
           ) : (
@@ -434,6 +538,16 @@ export default function Home() {
                   {slides.length} SLIDES · 1080×1350 ·{' '}
                   {TONES.find(t => t.id === selectedTone)?.emoji} {selectedTone.toUpperCase()} TONE
                 </p>
+                {target?.company && (
+                  <div className="sticker bg-[#1847FF] text-white border-[#0A0A0A] mt-3 inline-block">
+                    Target: {target.company}{target.role ? ` · ${target.role}` : ''}
+                  </div>
+                )}
+                {target?.warnings?.length ? (
+                  <p className="text-xs font-bold text-[#FF1F5A] mt-2 max-w-xl">
+                    {target.warnings[0]}
+                  </p>
+                ) : null}
               </div>
 
               {/* Action buttons */}
@@ -443,6 +557,7 @@ export default function Home() {
                     if (hasAnyEdits() && !window.confirm('This discards your edits. Continue?')) return;
                     setSlides(null);
                     originalSlidesRef.current = null;
+                    setTarget(null);
                     setView('upload');
                   }}
                   className="brut-btn brut-shadow border-4 border-[#0A0A0A] bg-[#F2EDE4] px-5 py-3 text-xs font-black uppercase tracking-widest transition-all"

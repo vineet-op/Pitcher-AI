@@ -47,6 +47,7 @@ ${rawText}`;
 export function buildMasterPrompt(
   resume: Record<string, unknown>,
   tone: string,
+  companyContext?: string,
 ): string {
   const toneInstructions: Record<string, string> = {
     funny: `TONE — Bold & Funny:
@@ -68,6 +69,47 @@ Senior engineer being referred by a mutual connection.
 
   const selectedTone = toneInstructions[tone] ?? toneInstructions["funny"];
 
+  const jobBlock = companyContext?.trim()
+    ? `
+---
+
+TARGET COMPANY / ROLE (retrieved — treat as the only source of company facts):
+${companyContext}
+
+JOB-AWARE RULES:
+- Resume = facts about the candidate. Retrieved block = facts about the company/role. Never mix them up.
+- Do NOT invent company products, metrics, stack, offices, or news. If it is not in the retrieved block, skip it.
+- Do NOT invent resume metrics. Proof slides still come only from the resume.
+- Prefer resume projects that overlap the role's must-haves / stack.
+- Slide 1 hook may name the company or role if it still sounds like a swipeable one-liner.
+- Slides 10–11 should connect a REAL resume proof to a REAL org problem or product from the retrieved block (setup → punchline).
+- Slide 12 ask should be aimed at this company/role, not a generic "let's talk".
+- If the resume does not match a requirement, do not claim it.
+`
+    : "";
+
+  const slide10 = companyContext?.trim()
+    ? `Slide 10 — Setup (slide_type: "setup"):
+Name a real problem, product, or moment from the retrieved company research. One line. Sets up why this candidate is relevant.
+Example: "You are drowning in ops tickets. I have seen that movie."`
+    : `Slide 10 — Setup (slide_type: "setup"):
+A bold or funny observation about the industry, the hiring process, or what makes this candidate different.
+Example: "200 resumes. Most say the same thing." or "I don't just use AI tools. I build them."`;
+
+  const slide11 = companyContext?.trim()
+    ? `Slide 11 — Punchline (slide_type: "punchline"):
+Payoff: a resume proof that maps to that org fact. Specific. No invented company stats.`
+    : `Slide 11 — Punchline (slide_type: "punchline"):
+The payoff to slide 10. Confident, memorable, slightly audacious.`;
+
+  const slide12 = companyContext?.trim()
+    ? `Slide 12 — The Ask (slide_type: "ask"):
+headline: A closer aimed at this company/role — a challenge or confident question.
+subtext: "[Name] · [email] · [linkedin or github if available]"`
+    : `Slide 12 — The Ask (slide_type: "ask"):
+headline: One bold closing line — a challenge, question, or confident statement.
+subtext: "[Name] · [email] · [linkedin or github if available]"`;
+
   return `You are a world-class personal pitch writer — part stand-up comedian, part startup pitch coach, part senior engineer who knows how to tell a story.
 
 Your job: turn a developer's resume into a carousel pitch deck that gets shared on LinkedIn. Not because it's fluffy — because it's specific, human, and impossible to ignore.
@@ -86,7 +128,7 @@ ${selectedTone}
 
 CANDIDATE RESUME:
 ${JSON.stringify(resume, null, 2)}
-
+${jobBlock}
 ---
 
 OUTPUT FORMAT
@@ -159,16 +201,11 @@ The actual skills list. Top 4-5 most impressive, grounded in real usage.
 headline: "In production. Not just on my resume." (or similar setup line)
 bullet_points: ["[Skill] — [4-word proof from resume]", ...]
 
-Slide 10 — Setup (slide_type: "setup"):
-A bold or funny observation about the industry, the hiring process, or what makes this candidate different.
-Example: "200 resumes. Most say the same thing." or "I don't just use AI tools. I build them."
+${slide10}
 
-Slide 11 — Punchline (slide_type: "punchline"):
-The payoff to slide 10. Confident, memorable, slightly audacious.
+${slide11}
 
-Slide 12 — The Ask (slide_type: "ask"):
-headline: One bold closing line — a challenge, question, or confident statement.
-subtext: "[Name] · [email] · [linkedin or github if available]"
+${slide12}
 
 ---
 
@@ -176,6 +213,7 @@ HARD CONSTRAINTS:
 - Never use: passionate, driven, motivated, team player, hard worker, results-oriented, leverage, synergy, dynamic, excited to, thrilled to
 - Every technical claim must trace to something real in the resume — never fabricate numbers
 - If a specific number isn't in the resume, don't invent one — use a qualitative truth instead
+- Company claims must trace to the retrieved block — never fabricate org facts
 - bullet_points ONLY on slide 9. Empty array on all other slides.
 
 Return ONLY the JSON array. No other text.`;

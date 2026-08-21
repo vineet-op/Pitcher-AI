@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateWithFallback } from "@/lib/gemini";
 import { buildMasterPrompt } from "@/lib/prompts";
+import { researchCompany } from "@/lib/researchCompany";
 
 export interface Slide {
   slide_number: number;
@@ -15,13 +16,38 @@ export interface Slide {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { resumeJson, tone }: { resumeJson: Record<string, unknown>; tone: string } = body;
+    const {
+      resumeJson,
+      tone,
+      jobUrl,
+      companyName,
+      jobText,
+      roleTitle,
+    }: {
+      resumeJson: Record<string, unknown>;
+      tone: string;
+      jobUrl?: string;
+      companyName?: string;
+      jobText?: string;
+      roleTitle?: string;
+    } = body;
 
     if (!resumeJson) {
       return NextResponse.json({ error: "Missing resume data" }, { status: 400 });
     }
 
-    const prompt = buildMasterPrompt(resumeJson, tone ?? "funny");
+    const target = await researchCompany({
+      jobUrl,
+      companyName,
+      jobText,
+      roleTitle,
+    });
+
+    const prompt = buildMasterPrompt(
+      resumeJson,
+      tone ?? "funny",
+      target?.contextBlock,
+    );
     const responseText = await generateWithFallback(prompt);
 
     const cleanedJson = responseText
@@ -35,7 +61,17 @@ export async function POST(req: NextRequest) {
       throw new Error("Invalid slides format returned from model");
     }
 
-    return NextResponse.json({ slides });
+    return NextResponse.json({
+      slides,
+      target: target
+        ? {
+            company: target.company,
+            role: target.role,
+            warnings: target.warnings,
+            citations: target.citations,
+          }
+        : null,
+    });
   } catch (error) {
     console.error("Pitch generation error:", error);
 
