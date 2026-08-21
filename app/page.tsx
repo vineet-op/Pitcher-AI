@@ -9,6 +9,8 @@ import BeforeAfter from '@/components/BeforeAfter';
 import HowItWorks from '@/components/HowItWorks';
 import ExampleSection from '@/components/ExampleSection';
 import FinalCTA from '@/components/FinalCTA';
+import SlideInspector from '@/components/SlideInspector';
+import { exportCarouselZip, slugifyName } from '@/lib/exportCarousel';
 
 /* ── Types ── */
 type View = 'landing' | 'upload' | 'result';
@@ -56,8 +58,11 @@ export default function Home() {
   const [selectedTone, setSelectedTone] = useState<Tone>('funny');
   const [activeSlide, setActiveSlide]   = useState(0);
   const [contact, setContact]       = useState<ContactLinks>(EMPTY_CONTACT);
+  const [exporting, setExporting]   = useState(false);
+  const [exportDone, setExportDone] = useState(0);
   const fileInputRef  = useRef<HTMLInputElement>(null);
-  const carouselRef   = useRef<HTMLDivElement>(null);
+  const exportNodesRef = useRef<Map<number, HTMLElement>>(new Map());
+  const originalSlidesRef = useRef<Slide[] | null>(null);
 
   /* Cycle loading messages while generating */
   useEffect(() => {
@@ -68,17 +73,32 @@ export default function Home() {
 
   /* ── Handlers (all existing logic preserved) ── */
   function scrollToSlide(index: number) {
-    const el = carouselRef.current;
-    if (!el || !slides) return;
-    const clamped = Math.max(0, Math.min(index, slides.length - 1));
-    el.scrollTo({ left: clamped * (1080 * PREVIEW_SCALE + 16), behavior: 'smooth' });
-    setActiveSlide(clamped);
+    if (!slides) return;
+    setActiveSlide(Math.max(0, Math.min(index, slides.length - 1)));
   }
 
-  function handleCarouselScroll() {
-    const el = carouselRef.current;
-    if (!el) return;
-    setActiveSlide(Math.round(el.scrollLeft / (1080 * PREVIEW_SCALE + 16)));
+  function updateSlide(slideNumber: number, patch: Partial<Slide>) {
+    setSlides((prev) =>
+      prev
+        ? prev.map((s) => (s.slide_number === slideNumber ? { ...s, ...patch } : s))
+        : prev,
+    );
+  }
+
+  function revertSlide(slideNumber: number) {
+    const original = originalSlidesRef.current?.find((s) => s.slide_number === slideNumber);
+    if (!original) return;
+    updateSlide(slideNumber, { ...original });
+  }
+
+  function isSlideDirty(slide: Slide): boolean {
+    const original = originalSlidesRef.current?.find((s) => s.slide_number === slide.slide_number);
+    return !!original && JSON.stringify(original) !== JSON.stringify(slide);
+  }
+
+  function hasAnyEdits(): boolean {
+    if (!slides || !originalSlidesRef.current) return false;
+    return JSON.stringify(slides) !== JSON.stringify(originalSlidesRef.current);
   }
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -88,6 +108,7 @@ export default function Home() {
     setFileName(file.name);
     setResumeJson(null);
     setSlides(null);
+    originalSlidesRef.current = null;
     setLoading(true);
     setLoadingStage('parsing');
     try {
@@ -129,6 +150,7 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate pitch');
       setSlides(data.slides);
+      originalSlidesRef.current = structuredClone(data.slides);
       setActiveSlide(0);
       setView('result');
     } catch (err) {
@@ -143,6 +165,7 @@ export default function Home() {
     setView('landing');
     setResumeJson(null);
     setSlides(null);
+    originalSlidesRef.current = null;
     setError(null);
     setFileName(null);
     setSelectedTone('funny');
@@ -154,6 +177,34 @@ export default function Home() {
     setError(null);
     setView('upload');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function handleExport() {
+    if (!slides || exporting) return;
+    setError(null);
+    setExporting(true);
+    setExportDone(0);
+    try {
+      const nodes = slides.map((slide) => {
+        const el = exportNodesRef.current.get(slide.slide_number);
+        if (!el) throw new Error('Export cards are not ready yet. Try again.');
+        return el;
+      });
+      const fileNames = slides.map(
+        (slide) =>
+          `${String(slide.slide_number).padStart(2, '0')}-${slide.slide_type}.png`,
+      );
+      await exportCarouselZip({
+        nodes,
+        fileNames,
+        zipName: `${slugifyName(contact.name)}-carousel.zip`,
+        onProgress: (done) => setExportDone(done),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Export failed');
+    } finally {
+      setExporting(false);
+    }
   }
 
   /* ── Render ── */
@@ -348,6 +399,27 @@ export default function Home() {
       {view === 'result' && slides && (
         <div className="px-4 sm:px-6 py-10">
 
+          {/* Off-screen full-size cards for PNG capture (1080×1350) */}
+          <div
+            aria-hidden
+            className="pointer-events-none fixed top-0 overflow-hidden"
+            style={{ left: -4000, width: 1080 }}
+          >
+            {slides.map((slide) => (
+              <SlideCard
+                key={slide.slide_number}
+                slide={slide}
+                total={slides.length}
+                scale={1}
+                contact={contact}
+                innerRef={(el) => {
+                  if (el) exportNodesRef.current.set(slide.slide_number, el);
+                  else exportNodesRef.current.delete(slide.slide_number);
+                }}
+              />
+            ))}
+          </div>
+
           {/* Result header */}
           <div className="max-w-7xl mx-auto mb-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b-4 border-[#0A0A0A] pb-6">
@@ -367,7 +439,12 @@ export default function Home() {
               {/* Action buttons */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => { setSlides(null); setView('upload'); }}
+                  onClick={() => {
+                    if (hasAnyEdits() && !window.confirm('This discards your edits. Continue?')) return;
+                    setSlides(null);
+                    originalSlidesRef.current = null;
+                    setView('upload');
+                  }}
                   className="brut-btn brut-shadow border-4 border-[#0A0A0A] bg-[#F2EDE4] px-5 py-3 text-xs font-black uppercase tracking-widest transition-all"
                 >
                   ← REDO
@@ -382,85 +459,94 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Carousel strip */}
+          {/* Studio: editor first so it cannot hide off-screen */}
           <div className="max-w-7xl mx-auto">
-            <div className="relative">
-              {/* Slides */}
-              <div
-                ref={carouselRef}
-                onScroll={handleCarouselScroll}
-                className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 scrollbar-none"
-                style={{ scrollbarWidth: 'none' }}
-              >
-                {slides.map(slide => (
-                  <div
-                    key={slide.slide_number}
-                    className={`snap-center shrink-0 border-4 overflow-hidden transition-all
-                      ${slide.slide_number - 1 === activeSlide ? 'border-[#1847FF] brut-shadow-blue' : 'border-[#0A0A0A] brut-shadow'}`}
-                  >
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_380px] gap-8 items-start">
+
+              <div className="order-2 xl:order-1">
+                <p className="mb-3 text-xs font-black uppercase tracking-widest text-[#0A0A0A]/50">
+                  Preview · tap a thumbnail or use arrows
+                </p>
+                <div className="relative flex justify-center">
+                  <div className="border-4 border-[#1847FF] brut-shadow-blue overflow-hidden">
                     <SlideCard
-                      slide={slide}
+                      slide={slides[activeSlide]}
                       total={slides.length}
                       scale={PREVIEW_SCALE}
                       contact={contact}
                     />
                   </div>
-                ))}
+
+                  <button
+                    onClick={() => scrollToSlide(activeSlide - 1)}
+                    disabled={activeSlide === 0}
+                    className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-10 border-4 border-[#0A0A0A] bg-[#F2EDE4] brut-shadow flex items-center justify-center font-black text-lg hover:bg-[#0A0A0A] hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    aria-label="Previous slide"
+                  >←</button>
+                  <button
+                    onClick={() => scrollToSlide(activeSlide + 1)}
+                    disabled={activeSlide >= slides.length - 1}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 w-10 h-10 border-4 border-[#0A0A0A] bg-[#F2EDE4] brut-shadow flex items-center justify-center font-black text-lg hover:bg-[#0A0A0A] hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                    aria-label="Next slide"
+                  >→</button>
+                </div>
+
+                <div className="text-center mt-4">
+                  <span className="text-xs font-black uppercase tracking-widest text-[#0A0A0A]/50">
+                    {activeSlide + 1} / {slides.length}
+                  </span>
+                </div>
+
+                <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                  {slides.map((slide, i) => (
+                    <button
+                      key={slide.slide_number}
+                      onClick={() => scrollToSlide(i)}
+                      className={`shrink-0 overflow-hidden border-2 transition-all
+                        ${i === activeSlide ? 'border-[#1847FF]' : 'border-[#0A0A0A] opacity-50 hover:opacity-80'}`}
+                      style={{
+                        width:  Math.round(1080 * THUMB_SCALE),
+                        height: Math.round(1350 * THUMB_SCALE),
+                      }}
+                      aria-label={`Go to slide ${i + 1}`}
+                    >
+                      <SlideCard slide={slide} total={slides.length} scale={THUMB_SCALE} />
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {/* Nav arrows */}
-              <button
-                onClick={() => scrollToSlide(activeSlide - 1)}
-                disabled={activeSlide === 0}
-                className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1 w-10 h-10 border-4 border-[#0A0A0A] bg-[#F2EDE4] brut-shadow flex items-center justify-center font-black text-lg hover:bg-[#0A0A0A] hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                aria-label="Previous slide"
-              >←</button>
-              <button
-                onClick={() => scrollToSlide(activeSlide + 1)}
-                disabled={activeSlide >= slides.length - 1}
-                className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 w-10 h-10 border-4 border-[#0A0A0A] bg-[#F2EDE4] brut-shadow flex items-center justify-center font-black text-lg hover:bg-[#0A0A0A] hover:text-white transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                aria-label="Next slide"
-              >→</button>
+              <div className="order-1 xl:order-2 xl:sticky xl:top-6">
+                <SlideInspector
+                  slide={slides[activeSlide]}
+                  total={slides.length}
+                  isDirty={isSlideDirty(slides[activeSlide])}
+                  onChange={(patch) => updateSlide(slides[activeSlide].slide_number, patch)}
+                  onRevert={() => revertSlide(slides[activeSlide].slide_number)}
+                />
+              </div>
             </div>
 
-            {/* Slide counter */}
-            <div className="text-center mt-4">
-              <span className="text-xs font-black uppercase tracking-widest text-[#0A0A0A]/50">
-                {activeSlide + 1} / {slides.length}
-              </span>
-            </div>
-
-            {/* Thumbnail strip */}
-            <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-none">
-              {slides.map((slide, i) => (
-                <button
-                  key={slide.slide_number}
-                  onClick={() => scrollToSlide(i)}
-                  className={`shrink-0 overflow-hidden border-2 transition-all
-                    ${i === activeSlide ? 'border-[#1847FF]' : 'border-[#0A0A0A] opacity-50 hover:opacity-80'}`}
-                  style={{
-                    width:  Math.round(1080 * THUMB_SCALE),
-                    height: Math.round(1350 * THUMB_SCALE),
-                  }}
-                  aria-label={`Go to slide ${i + 1}`}
-                >
-                  <SlideCard slide={slide} total={slides.length} scale={THUMB_SCALE} />
-                </button>
-              ))}
-            </div>
-
-            {/* Export CTA placeholder */}
+            {/* Export CTA */}
             <div className="mt-8 border-4 border-[#0A0A0A] p-6 bg-[#0A0A0A] flex flex-col sm:flex-row items-center justify-between gap-4 brut-shadow-lg">
               <div>
                 <p className="text-white font-black text-sm uppercase tracking-widest">EXPORT YOUR CAROUSEL</p>
-                <p className="text-white/40 text-xs font-bold mt-1">Download as images, ready for LinkedIn</p>
+                <p className="text-white/40 text-xs font-bold mt-1">
+                  {exporting
+                    ? `Rendering slide ${exportDone} of ${slides.length}…`
+                    : 'Download as 1080×1350 PNGs, ready for LinkedIn'}
+                </p>
+                {error && view === 'result' && (
+                  <p className="text-[#FF1F5A] text-xs font-bold mt-2">{error}</p>
+                )}
               </div>
               <button
-                className="brut-btn bg-[#CCFF00] text-[#0A0A0A] border-4 border-[#CCFF00] px-6 py-3 text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap"
+                className="brut-btn bg-[#CCFF00] text-[#0A0A0A] border-4 border-[#CCFF00] px-6 py-3 text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ boxShadow: '4px 4px 0px #CCFF00' }}
-                onClick={() => alert('Export coming soon!')}
+                onClick={handleExport}
+                disabled={exporting}
               >
-                EXPORT CAROUSEL →
+                {exporting ? `EXPORTING ${exportDone}/${slides.length}…` : 'EXPORT CAROUSEL →'}
               </button>
             </div>
           </div>

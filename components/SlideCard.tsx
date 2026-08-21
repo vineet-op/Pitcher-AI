@@ -89,9 +89,10 @@ interface SlideCardProps {
   total: number;
   scale?: number;
   contact?: ContactLinks;
+  innerRef?: React.Ref<HTMLDivElement>;
 }
 
-export default function SlideCard({ slide, total, scale = 1, contact }: SlideCardProps) {
+export default function SlideCard({ slide, total, scale = 1, contact, innerRef }: SlideCardProps) {
   const accent = ACCENTS[slide.slide_type] ?? ACCENTS.setup;
   const meme = slide.image_tag ? MEMES[slide.image_tag] : undefined;
   const headline = slide.headline.replace(/\*\*/g, '');
@@ -109,6 +110,7 @@ export default function SlideCard({ slide, total, scale = 1, contact }: SlideCar
   return (
     <div style={{ width: SLIDE_W * scale, height: SLIDE_H * scale }}>
       <div
+        ref={innerRef}
         data-slide-card={slide.slide_number}
         style={{
           width: SLIDE_W,
@@ -245,9 +247,9 @@ export default function SlideCard({ slide, total, scale = 1, contact }: SlideCar
             </div>
           )}
 
-          {slide.bullet_points && slide.bullet_points.length > 0 && (
+          {slide.bullet_points?.some((p) => p.trim()) && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 26 }}>
-              {slide.bullet_points.map((point, i) => (
+              {slide.bullet_points.filter((p) => p.trim()).map((point, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
                   <div
                     style={{
