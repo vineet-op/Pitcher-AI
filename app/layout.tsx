@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
-/** Paste a full https:// image URL. 1200×630 works best for LinkedIn + Twitter. */
+/** 1200×630 JPEG — X often skips large PNGs and caches the first fetch. */
 const OG_IMAGE =
-  "https://res.cloudinary.com/dgcjzooxx/image/upload/v1787430373/ChatGPT_Image_Aug_23_2026_01_55_19_AM_od80vp.png";
+  "https://res.cloudinary.com/dgcjzooxx/image/upload/w_1200,h_630,c_fill,g_auto,f_jpg,q_80/v1787430373/ChatGPT_Image_Aug_23_2026_01_55_19_AM_od80vp.png";
 
 const TITLE = "Pitcher AI — Turn Your Resume Into a Carousel";
 const DESCRIPTION =
