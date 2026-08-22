@@ -10,7 +10,7 @@ import HowItWorks from '@/components/HowItWorks';
 import ExampleSection from '@/components/ExampleSection';
 import FinalCTA from '@/components/FinalCTA';
 import SlideInspector from '@/components/SlideInspector';
-import { exportCarouselZip, slugifyName } from '@/lib/exportCarousel';
+import { exportCarouselZip, exportCarouselPdf, slugifyName } from '@/lib/exportCarousel';
 
 /* ── Types ── */
 type View = 'landing' | 'upload' | 'result';
@@ -76,6 +76,7 @@ export default function Home() {
   } | null>(null);
   const [exporting, setExporting]   = useState(false);
   const [exportDone, setExportDone] = useState(0);
+  const [exportKind, setExportKind] = useState<'zip' | 'pdf' | null>(null);
   const fileInputRef  = useRef<HTMLInputElement>(null);
   const exportNodesRef = useRef<Map<number, HTMLElement>>(new Map());
   const originalSlidesRef = useRef<Slide[] | null>(null);
@@ -211,10 +212,11 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  async function handleExport() {
+  async function handleExport(kind: 'zip' | 'pdf') {
     if (!slides || exporting) return;
     setError(null);
     setExporting(true);
+    setExportKind(kind);
     setExportDone(0);
     try {
       const nodes = slides.map((slide) => {
@@ -222,20 +224,30 @@ export default function Home() {
         if (!el) throw new Error('Export cards are not ready yet. Try again.');
         return el;
       });
-      const fileNames = slides.map(
-        (slide) =>
-          `${String(slide.slide_number).padStart(2, '0')}-${slide.slide_type}.png`,
-      );
-      await exportCarouselZip({
-        nodes,
-        fileNames,
-        zipName: `${slugifyName(contact.name)}-carousel.zip`,
-        onProgress: (done) => setExportDone(done),
-      });
+      const base = slugifyName(contact.name);
+      if (kind === 'pdf') {
+        await exportCarouselPdf({
+          nodes,
+          pdfName: `${base}-carousel.pdf`,
+          onProgress: (done) => setExportDone(done),
+        });
+      } else {
+        const fileNames = slides.map(
+          (slide) =>
+            `${String(slide.slide_number).padStart(2, '0')}-${slide.slide_type}.png`,
+        );
+        await exportCarouselZip({
+          nodes,
+          fileNames,
+          zipName: `${base}-carousel.zip`,
+          onProgress: (done) => setExportDone(done),
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed');
     } finally {
       setExporting(false);
+      setExportKind(null);
     }
   }
 
@@ -649,20 +661,34 @@ export default function Home() {
                 <p className="text-white/40 text-xs font-bold mt-1">
                   {exporting
                     ? `Rendering slide ${exportDone} of ${slides.length}…`
-                    : 'Download as 1080×1350 PNGs, ready for LinkedIn'}
+                    : 'PNG zip for LinkedIn · PDF to send as a deck'}
                 </p>
                 {error && view === 'result' && (
                   <p className="text-[#FF1F5A] text-xs font-bold mt-2">{error}</p>
                 )}
               </div>
-              <button
-                className="brut-btn bg-[#CCFF00] text-[#0A0A0A] border-4 border-[#CCFF00] px-6 py-3 text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ boxShadow: '4px 4px 0px #CCFF00' }}
-                onClick={handleExport}
-                disabled={exporting}
-              >
-                {exporting ? `EXPORTING ${exportDone}/${slides.length}…` : 'EXPORT CAROUSEL →'}
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  className="brut-btn bg-white text-[#0A0A0A] border-4 border-white px-6 py-3 text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ boxShadow: '4px 4px 0px #CCFF00' }}
+                  onClick={() => handleExport('zip')}
+                  disabled={exporting}
+                >
+                  {exporting && exportKind === 'zip'
+                    ? `ZIP ${exportDone}/${slides.length}…`
+                    : 'EXPORT ZIP'}
+                </button>
+                <button
+                  className="brut-btn bg-[#CCFF00] text-[#0A0A0A] border-4 border-[#CCFF00] px-6 py-3 text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ boxShadow: '4px 4px 0px #CCFF00' }}
+                  onClick={() => handleExport('pdf')}
+                  disabled={exporting}
+                >
+                  {exporting && exportKind === 'pdf'
+                    ? `PDF ${exportDone}/${slides.length}…`
+                    : 'EXPORT PDF →'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

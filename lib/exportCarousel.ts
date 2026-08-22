@@ -1,5 +1,6 @@
 import { toBlob } from 'html-to-image';
 import JSZip from 'jszip';
+import { jsPDF } from 'jspdf';
 import { SLIDE_H, SLIDE_W } from '@/components/SlideCard';
 
 export async function waitForImages(root: HTMLElement): Promise<void> {
@@ -24,19 +25,24 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export async function exportCarouselZip(options: {
-  nodes: HTMLElement[];
-  fileNames: string[];
-  zipName: string;
-  onProgress?: (done: number, total: number) => void;
-}): Promise<void> {
-  const { nodes, fileNames, zipName, onProgress } = options;
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
+export async function renderSlidesToBlobs(
+  nodes: HTMLElement[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<Blob[]> {
   if (document.fonts?.ready) {
     await document.fonts.ready;
   }
 
-  const zip = new JSZip();
+  const blobs: Blob[] = [];
 
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
@@ -60,12 +66,47 @@ export async function exportCarouselZip(options: {
       throw new Error(`Failed to render slide ${i + 1}`);
     }
 
-    zip.file(fileNames[i], blob);
+    blobs.push(blob);
     onProgress?.(i + 1, nodes.length);
   }
 
+  return blobs;
+}
+
+export async function exportCarouselZip(options: {
+  nodes: HTMLElement[];
+  fileNames: string[];
+  zipName: string;
+  onProgress?: (done: number, total: number) => void;
+}): Promise<void> {
+  const blobs = await renderSlidesToBlobs(options.nodes, options.onProgress);
+  const zip = new JSZip();
+  blobs.forEach((blob, i) => zip.file(options.fileNames[i], blob));
   const zipBlob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(zipBlob, zipName);
+  downloadBlob(zipBlob, options.zipName);
+}
+
+export async function exportCarouselPdf(options: {
+  nodes: HTMLElement[];
+  pdfName: string;
+  onProgress?: (done: number, total: number) => void;
+}): Promise<void> {
+  const blobs = await renderSlidesToBlobs(options.nodes, options.onProgress);
+
+  const pdf = new jsPDF({
+    orientation: 'portrait',
+    unit: 'px',
+    format: [SLIDE_W, SLIDE_H],
+    hotfixes: ['px_scaling'],
+  });
+
+  for (let i = 0; i < blobs.length; i++) {
+    if (i > 0) pdf.addPage([SLIDE_W, SLIDE_H], 'portrait');
+    const dataUrl = await blobToDataUrl(blobs[i]);
+    pdf.addImage(dataUrl, 'PNG', 0, 0, SLIDE_W, SLIDE_H, undefined, 'FAST');
+  }
+
+  pdf.save(options.pdfName);
 }
 
 export function slugifyName(name: string): string {
